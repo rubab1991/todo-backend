@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: todo-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: NEON_DB_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      - key: DEBUG
+        value: "false"
