@@ -1,7 +1,9 @@
 import logging
+import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from src.routes import tasks
 from src.routes.websocket import router as ws_router
 from src.routes.events import router as events_router
@@ -44,6 +46,17 @@ app.include_router(ws_router, tags=["websocket"])
 
 # Dapr pub/sub subscription + event handlers
 app.include_router(events_router, tags=["events"])
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and return JSON with details."""
+    tb = traceback.format_exc()
+    logger.error("Unhandled exception on %s %s: %s\n%s", request.method, request.url.path, exc, tb)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": tb.split("\n")[-4:]},
+    )
 
 
 @app.get("/")
