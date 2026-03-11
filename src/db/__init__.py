@@ -10,7 +10,8 @@ from .session import get_async_session_dep, get_or_create_user, get_async_sessio
 async def create_db_and_tables():
     """Create database tables if they don't exist."""
     from sqlmodel import SQLModel
-    from ..models import Task, User  # Import models here
+    # Import ALL models so SQLAlchemy registers them
+    from ..models import Task, User, Conversation, Message, AuditLog  # noqa: F401
 
     async with async_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

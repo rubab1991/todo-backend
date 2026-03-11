@@ -55,11 +55,22 @@ async def root():
 async def health():
     import os
     from src.config import settings
+    # Quick DB connectivity check
+    db_ok = False
+    db_error = None
+    try:
+        from sqlalchemy import text
+        from src.db import async_engine
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception as e:
+        db_error = str(e)
     return {
         "status": "healthy",
         "auth_configured": bool(settings.better_auth_secret),
         "db_configured": bool(settings.database_url_resolved),
+        "db_connected": db_ok,
+        "db_error": db_error,
         "cohere_configured": bool(settings.cohere_api_key),
-        "env_auth_present": "BETTER_AUTH_SECRET" in os.environ,
-        "env_db_present": "NEON_DB_URL" in os.environ or "DATABASE_URL" in os.environ,
     }
