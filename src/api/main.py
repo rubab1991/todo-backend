@@ -53,4 +53,13 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    import os
+    from src.config import settings
+    return {
+        "status": "healthy",
+        "auth_configured": bool(settings.better_auth_secret),
+        "db_configured": bool(settings.database_url_resolved),
+        "cohere_configured": bool(settings.cohere_api_key),
+        "env_auth_present": "BETTER_AUTH_SECRET" in os.environ,
+        "env_db_present": "NEON_DB_URL" in os.environ or "DATABASE_URL" in os.environ,
+    }

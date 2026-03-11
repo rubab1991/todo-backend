@@ -1,60 +1,17 @@
 """
 Task Executor — Phase V.
-Routes intent results to MCP tool calls, passing all Phase V fields:
-priority, tags, dueDate, reminderAt, recurringInterval, search/filter, sort.
+Routes intent results to direct DB operations via MCP tools,
+supporting all Phase V fields: priority, tags, dueDate, reminderAt,
+recurringInterval, search/filter, sort.
 """
+import json
 import logging
-import os
 from typing import Dict, Any, List, Optional
-
-import httpx
 
 from ..mcp.mcp_tools import add_task, list_tasks, update_task, complete_task, delete_task
 from .error_handler import handle_error
 
 logger = logging.getLogger(__name__)
-
-INTERNAL_API_BASE = os.getenv("INTERNAL_API_BASE", "http://localhost:8000")
-
-
-async def _api_create_task(user_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Create a task via the HTTP API (supports all Phase V fields)."""
-    url = f"{INTERNAL_API_BASE}/api/{user_id}/tasks"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-
-async def _api_update_task(user_id: str, task_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Update a task via the HTTP API (supports all Phase V fields)."""
-    url = f"{INTERNAL_API_BASE}/api/{user_id}/tasks/{task_id}"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.put(url, json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-
-async def _api_list_tasks(user_id: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """List/search/filter/sort tasks via the HTTP API."""
-    url = f"{INTERNAL_API_BASE}/api/{user_id}/tasks"
-    query = {}
-    if params.get("search_query"):
-        query["search"] = params["search_query"]
-    if params.get("filter_priority"):
-        query["priority"] = params["filter_priority"]
-    if params.get("filter_status"):
-        query["status"] = params["filter_status"]
-    if params.get("filter_tags"):
-        query["tag"] = params["filter_tags"][0]  # API supports one tag filter
-    if params.get("sort_by"):
-        query["sort_by"] = params["sort_by"]
-        query["sort_order"] = params.get("sort_order", "asc")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, params=query)
-        resp.raise_for_status()
-        return resp.json()
 
 
 async def execute_task(intent_result: Dict[str, Any], user_id: str) -> Dict[str, Any]:
@@ -82,41 +39,45 @@ async def execute_task(intent_result: Dict[str, Any], user_id: str) -> Dict[str,
                     "status": "validation_error",
                     "validation_error": reminder_validation_error,
                 }
-            payload = {
-                "title": params.get("title", "Untitled task"),
-                "description": params.get("description"),
-                "isComplete": False,
-                "dueDate": params.get("dueDate"),
+            result = await add_task(
+                user_id=user_id,
+                title=params.get("title", "Untitled task"),
+                description=params.get("description"),
+                priority=params.get("priority", "medium"),
+                tags=params.get("tags", []),
+                due_date=params.get("dueDate"),
+                recurring_interval=params.get("recurringInterval"),
+                reminder_at=params.get("reminderAt"),
+            )
+            operation = {
+                "operation": "create",
+                "task_id": result.get("task_id"),
+                "status": "success",
+                "title": result.get("title", ""),
                 "priority": params.get("priority", "medium"),
                 "tags": params.get("tags", []),
                 "recurringInterval": params.get("recurringInterval"),
+                "dueDate": params.get("dueDate"),
                 "reminderAt": params.get("reminderAt"),
-            }
-            result = await _api_create_task(user_id, payload)
-            operation = {
-                "operation": "create",
-                "task_id": result.get("id"),
-                "status": "success",
-                "title": result.get("title", ""),
-                "priority": result.get("priority"),
-                "tags": result.get("tags", []),
-                "recurringInterval": result.get("recurringInterval"),
-                "dueDate": result.get("dueDate"),
-                "reminderAt": result.get("reminderAt"),
             }
 
         elif intent in ("list_tasks", "search_tasks"):
-            tasks_data = await _api_list_tasks(user_id, params)
+            status_filter = params.get("filter_status", "all")
+            search_query = params.get("search_query")
+            result = await list_tasks(
+                user_id=user_id,
+                status=status_filter,
+                search_query=search_query,
+            )
+            tasks_data = result.get("tasks", [])
             operation = {
                 "operation": "list",
                 "status": "success",
                 "count": len(tasks_data),
                 "tasks": tasks_data,
-                "filter": params.get("filter_status", "all"),
-                "search_query": params.get("search_query"),
-                "sort_by": params.get("sort_by"),
+                "filter": status_filter,
+                "search_query": search_query,
             }
-            result = {"tasks": tasks_data, "count": len(tasks_data)}
 
         elif intent == "update_task":
             if reminder_validation_error:
@@ -129,16 +90,17 @@ async def execute_task(intent_result: Dict[str, Any], user_id: str) -> Dict[str,
             task_id = params.get("task_id")
             if not task_id:
                 raise ValueError("No task ID specified for update")
-            payload = {k: v for k, v in {
-                "title": params.get("title"),
-                "description": params.get("description"),
-                "dueDate": params.get("dueDate"),
-                "priority": params.get("priority"),
-                "tags": params.get("tags"),
-                "recurringInterval": params.get("recurringInterval"),
-                "reminderAt": params.get("reminderAt"),
-            }.items() if v is not None}
-            result = await _api_update_task(user_id, task_id, payload)
+            result = await update_task(
+                user_id=user_id,
+                task_id=task_id,
+                title=params.get("title"),
+                description=params.get("description"),
+                priority=params.get("priority"),
+                tags=params.get("tags"),
+                due_date=params.get("dueDate"),
+                recurring_interval=params.get("recurringInterval"),
+                reminder_at=params.get("reminderAt"),
+            )
             operation = {
                 "operation": "update",
                 "task_id": task_id,

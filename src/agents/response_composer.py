@@ -63,7 +63,7 @@ def compose_response(
                 for task in tasks:
                     task_id = task.get("id", "?")
                     title = task.get("title", "Untitled")
-                    status = "completed" if task.get("isComplete") else "pending"
+                    status = task.get("status", "pending")
                     priority = task.get("priority", "medium")
                     tags = task.get("tags", [])
                     due = task.get("dueDate", "")
