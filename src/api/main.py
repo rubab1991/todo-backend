@@ -51,6 +51,30 @@ async def root():
     return {"message": "Todo API v2 (Phase V — Event-Driven)"}
 
 
+@app.get("/debug/tables")
+async def debug_tables():
+    """Temporary endpoint to check DB tables — remove after debugging."""
+    from sqlalchemy import text, inspect
+    from src.db import async_engine
+    try:
+        async with async_engine.connect() as conn:
+            result = await conn.execute(text(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ))
+            tables = [row[0] for row in result]
+            # Also try to create tables if missing
+            if "tasks" not in tables:
+                await db.create_db_and_tables()
+                result2 = await conn.execute(text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+                ))
+                tables = [row[0] for row in result2]
+                return {"tables": tables, "note": "Tables were missing, attempted creation"}
+            return {"tables": tables}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/health")
 async def health():
     import os
