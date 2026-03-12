@@ -14,3 +14,4 @@ sse-starlette==3.2.0
 cohere==5.5.4
 openai==1.58.0
 alembic==1.18.4
+aiokafka==0.10.0
