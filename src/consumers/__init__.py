@@ -1,0 +1,1 @@
+"""Redpanda event consumers."""

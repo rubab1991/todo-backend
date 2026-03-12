@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import traceback
 from contextlib import asynccontextmanager
@@ -9,19 +10,42 @@ from src.routes.websocket import router as ws_router
 from src.routes.events import router as events_router
 from src.api.chat_router import router as chat_router
 from src import db
+from src.services.event_publisher import get_kafka_producer, close_kafka_producer
+from src.consumers.reminder_consumer import run_reminder_consumer
+from src.consumers.audit_consumer import run_audit_consumer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_reminder_consumer_task = None
+_audit_consumer_task = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _reminder_consumer_task, _audit_consumer_task
     try:
         await db.create_db_and_tables()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error("Database initialization failed: %s", e)
+
+    # Warm up Redpanda producer and start consumers
+    await get_kafka_producer()
+    _reminder_consumer_task = asyncio.create_task(run_reminder_consumer())
+    _audit_consumer_task = asyncio.create_task(run_audit_consumer())
+
     yield
+
+    # Graceful shutdown
+    for task in (_reminder_consumer_task, _audit_consumer_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    await close_kafka_producer()
 
 
 app = FastAPI(title="Todo API", version="2.0.0", lifespan=lifespan)

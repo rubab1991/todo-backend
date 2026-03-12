@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     dapr_http_port: int = 3500
     dapr_app_id: str = "todo-backend"
     internal_api_base: str = "http://localhost:8000"
+    # Redpanda / Kafka settings
+    redpanda_bootstrap_servers: str = ""
+    redpanda_username: str = ""
+    redpanda_password: str = ""
+    redpanda_sasl_mechanism: str = "SCRAM-SHA-256"
+    redpanda_security_protocol: str = "SASL_SSL"
 
     @property
     def database_url_resolved(self) -> str:
